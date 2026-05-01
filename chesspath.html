@@ -1,0 +1,1997 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ChessPath — изучаем шахматы</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0-beta.6/chess.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1410;--bg-card:#27201a;--bg-elev:#332a22;
+    --ink:#f0e8dc;--ink-soft:#b5a896;--ink-muted:#7a6d5e;
+    --accent:#d4a574;--accent-deep:#a67c4f;
+    --gold:#e8c068;--rose:#c97064;--sage:#8caf76;
+    --line:#3a2f25;--soft:#2a221c;
+    --board-light:#e8c896;--board-dark:#a67c4f;
+    --highlight:rgba(232,192,104,0.5);
+    --hint:rgba(140,175,118,0.6);
+    --capture:rgba(201,112,100,0.7);
+    --check:rgba(201,112,100,0.85);
+  }
+  *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+  html,body{background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;overscroll-behavior:none}
+  .serif{font-family:'Fraunces',serif}
+  .card{background:var(--bg-card);border:1px solid var(--line);border-radius:16px}
+  .card-elev{background:var(--bg-elev);border:1px solid var(--line);border-radius:12px}
+  .btn-primary{background:var(--accent);color:#1a1410;transition:all .2s;font-weight:600}
+  .btn-primary:active{transform:scale(.97)}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+  .btn-ghost{background:var(--soft);color:var(--ink);transition:all .2s}
+  .btn-ghost:active{transform:scale(.97)}
+  .chip{transition:all .2s ease;border:1px solid var(--line);background:var(--soft)}
+  .chip.active{background:var(--accent);color:#1a1410;border-color:var(--accent);font-weight:600}
+  
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+  @keyframes pop{0%{transform:scale(.8);opacity:0}50%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
+  @keyframes confetti{0%{transform:translateY(0) rotate(0);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+  @keyframes pieceMove{from{opacity:0.5;transform:scale(1.1)}to{opacity:1;transform:scale(1)}}
+  
+  .fade-in{animation:fadeIn .3s ease}
+  .pop{animation:pop .4s cubic-bezier(.34,1.56,.64,1)}
+  .shake{animation:shake .4s}
+  .piece-move{animation:pieceMove .3s ease}
+  
+  .tab-pane{display:none}
+  .tab-pane.active{display:block;animation:fadeIn .3s ease}
+  
+  /* CHESS BOARD */
+  .chess-board{
+    display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+    aspect-ratio:1;width:100%;max-width:480px;margin:0 auto;
+    border:3px solid var(--accent-deep);border-radius:8px;overflow:hidden;
+    box-shadow:0 10px 40px rgba(0,0,0,0.5);
+    user-select:none;-webkit-user-select:none;
+  }
+  .square{
+    position:relative;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;transition:background .15s;
+    font-size:clamp(28px,8vw,46px);line-height:1;
+  }
+  .square.light{background:var(--board-light)}
+  .square.dark{background:var(--board-dark)}
+  .square.selected{background:var(--highlight) !important}
+  .square.last-move{box-shadow:inset 0 0 0 4px var(--gold)}
+  .square.in-check{background:var(--check) !important}
+  .square .hint{
+    position:absolute;width:30%;height:30%;border-radius:50%;
+    background:var(--hint);pointer-events:none;
+  }
+  .square .capture-hint{
+    position:absolute;inset:8%;border-radius:50%;
+    border:4px solid var(--capture);background:transparent;pointer-events:none;
+  }
+  .square .piece{cursor:grab;user-select:none;-webkit-user-select:none}
+  .square.dragging .piece{opacity:0.4}
+  .square .coord{
+    position:absolute;font-size:10px;font-weight:600;font-family:'Inter';
+    color:var(--ink-muted);pointer-events:none;
+  }
+  .square .coord.file{bottom:2px;right:4px}
+  .square .coord.rank{top:2px;left:4px}
+  .square.light .coord{color:#8b6f4d}
+  .square.dark .coord{color:#e8c896}
+  
+  /* PIECE SYMBOLS */
+  .piece-w{color:#fff;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0 0 4px rgba(0,0,0,0.5)}
+  .piece-b{color:#1a1410;text-shadow:0 0 1px rgba(255,255,255,0.3)}
+  
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--bg-elev);color:var(--ink);padding:12px 20px;border-radius:100px;font-size:14px;z-index:200;border:1px solid var(--line);box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  .toast.success{border-color:var(--sage);color:var(--sage)}
+  .toast.error{border-color:var(--rose);color:var(--rose)}
+  
+  .confetti-piece{position:fixed;width:10px;height:14px;top:-20px;z-index:9999;pointer-events:none;animation:confetti 2.5s ease-out forwards}
+  
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .badge-easy{background:rgba(140,175,118,.15);color:var(--sage)}
+  .badge-medium{background:rgba(212,165,116,.15);color:var(--accent)}
+  .badge-hard{background:rgba(201,112,100,.15);color:var(--rose)}
+  
+  .lesson-content{font-size:15px;line-height:1.7}
+  .lesson-content h2{font-family:'Fraunces',serif;font-size:24px;font-weight:500;margin:24px 0 12px;color:var(--ink)}
+  .lesson-content h3{font-family:'Fraunces',serif;font-size:18px;font-weight:500;margin:20px 0 10px;color:var(--ink)}
+  .lesson-content p{margin:12px 0;color:var(--ink-soft)}
+  .lesson-content ul,.lesson-content ol{margin:12px 0;padding-left:20px;color:var(--ink-soft)}
+  .lesson-content li{margin:6px 0}
+  .lesson-content strong{color:var(--ink)}
+  .lesson-content code{background:var(--soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:.9em}
+  .lesson-content .tip{background:linear-gradient(135deg,rgba(140,175,118,.1),rgba(140,175,118,.05));border-left:3px solid var(--sage);padding:12px 16px;border-radius:8px;margin:14px 0}
+  .lesson-content .warn{background:linear-gradient(135deg,rgba(201,112,100,.1),rgba(201,112,100,.05));border-left:3px solid var(--rose);padding:12px 16px;border-radius:8px;margin:14px 0}
+  .lesson-content .info{background:linear-gradient(135deg,rgba(212,165,116,.1),rgba(212,165,116,.05));border-left:3px solid var(--accent);padding:12px 16px;border-radius:8px;margin:14px 0}
+  
+  .move-history{font-family:monospace;font-size:13px}
+  .move-row{display:grid;grid-template-columns:32px 1fr 1fr;gap:8px;padding:4px 8px;border-radius:6px}
+  .move-row:hover{background:var(--soft)}
+  .move-num{color:var(--ink-muted)}
+  .move-cell{cursor:pointer}
+  .move-cell:hover{color:var(--accent)}
+  .move-cell.current{background:var(--accent);color:#1a1410;border-radius:4px;padding:0 4px}
+  
+  .progress-ring{transform:rotate(-90deg)}
+  .progress-ring circle{transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1)}
+  
+  .level-card{transition:all .2s ease;cursor:pointer}
+  .level-card:active{transform:scale(0.98)}
+  .level-card.completed{border-color:var(--sage)}
+  
+  .safe-bottom{padding-bottom:max(env(safe-area-inset-bottom),12px)}
+  .safe-top{padding-top:max(env(safe-area-inset-top),12px)}
+  
+  input,textarea,select{font-family:inherit}
+  input:focus,textarea:focus{outline:none}
+  
+  .scrollbar-hide::-webkit-scrollbar{display:none}
+  .scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none}
+  
+  .piece-captured{display:inline-block;font-size:20px;line-height:1;margin-right:-4px}
+  
+  .difficulty-btn.active{background:var(--accent);color:#1a1410;border-color:var(--accent)}
+</style>
+</head>
+<body class="min-h-screen pb-20">
+
+<header class="safe-top px-5 pt-4 pb-3">
+  <div class="flex items-center justify-between">
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">♞</span>
+        <h1 class="serif text-2xl font-light">ChessPath</h1>
+      </div>
+      <p class="text-xs mt-1" style="color:var(--ink-muted)">путь к мастерству</p>
+    </div>
+    <div class="card-elev px-3 py-1.5 rounded-full flex items-center gap-1 text-sm font-semibold" style="color:var(--gold)">
+      <span>⭐</span><span id="xpCount">0</span>
+    </div>
+  </div>
+</header>
+
+<div class="px-5 mb-4">
+  <div class="card p-1 flex gap-1">
+    <button class="tab-btn flex-1 py-2.5 text-sm font-medium rounded-xl" data-tab="learn" style="background:var(--accent);color:#1a1410">Уроки</button>
+    <button class="tab-btn flex-1 py-2.5 text-sm font-medium rounded-xl" data-tab="puzzles" style="color:var(--ink-soft)">Задачи</button>
+    <button class="tab-btn flex-1 py-2.5 text-sm font-medium rounded-xl" data-tab="play" style="color:var(--ink-soft)">Игра</button>
+    <button class="tab-btn flex-1 py-2.5 text-sm font-medium rounded-xl" data-tab="progress" style="color:var(--ink-soft)">Прогресс</button>
+  </div>
+</div>
+
+<main class="px-5 pb-20 max-w-3xl mx-auto">
+
+<!-- ============ УРОКИ ============ -->
+<section class="tab-pane active" id="tab-learn">
+  <div id="lessonsList"></div>
+  
+  <div id="lessonView" class="hidden">
+    <button onclick="backToLessons()" class="mb-3 text-sm flex items-center gap-2" style="color:var(--ink-soft)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      К списку уроков
+    </button>
+    
+    <div class="card p-5 mb-4">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-xs px-2 py-1 rounded-full" style="background:var(--soft);color:var(--ink-muted)" id="lessonModule">—</span>
+        <span class="badge" id="lessonLevel">—</span>
+      </div>
+      <h2 class="serif text-2xl font-medium mb-1" id="lessonTitle">—</h2>
+      <p class="text-sm mb-4" style="color:var(--ink-muted)" id="lessonDesc">—</p>
+      <div class="lesson-content" id="lessonContent">—</div>
+    </div>
+    
+    <div id="lessonExerciseBlock" class="hidden">
+      <div class="card p-5 mb-4">
+        <h3 class="serif text-lg font-medium mb-2">Попробуй сам</h3>
+        <p class="text-sm mb-3" style="color:var(--ink-soft)" id="exerciseTask">—</p>
+        
+        <div id="lessonBoardWrap" class="mb-3"></div>
+        
+        <div id="lessonStatus" class="text-sm text-center mb-3 p-3 rounded-xl" style="background:var(--soft);color:var(--ink-soft)">
+          Сделай ход
+        </div>
+        
+        <div class="flex gap-2">
+          <button onclick="resetLessonBoard()" class="btn-ghost flex-1 py-2.5 rounded-xl text-sm">↻ Заново</button>
+          <button onclick="showLessonHint()" class="btn-ghost px-4 py-2.5 rounded-xl text-sm">💡 Подсказка</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="flex gap-2">
+      <button onclick="prevLesson()" class="btn-ghost flex-1 py-3 rounded-xl text-sm" id="prevBtn">← Назад</button>
+      <button onclick="nextLesson()" class="btn-primary flex-1 py-3 rounded-xl text-sm" id="nextBtn">Далее →</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ЗАДАЧИ ============ -->
+<section class="tab-pane" id="tab-puzzles">
+  <div class="flex gap-2 mb-4 overflow-x-auto scrollbar-hide pb-1">
+    <button class="filter-btn chip active px-4 py-1.5 rounded-full text-xs whitespace-nowrap" data-filter="all">Все</button>
+    <button class="filter-btn chip px-4 py-1.5 rounded-full text-xs whitespace-nowrap" data-filter="easy">🟢 Лёгкие</button>
+    <button class="filter-btn chip px-4 py-1.5 rounded-full text-xs whitespace-nowrap" data-filter="medium">🟡 Средние</button>
+    <button class="filter-btn chip px-4 py-1.5 rounded-full text-xs whitespace-nowrap" data-filter="hard">🔴 Сложные</button>
+    <button class="filter-btn chip px-4 py-1.5 rounded-full text-xs whitespace-nowrap" data-filter="solved">✓ Решённые</button>
+  </div>
+  
+  <div id="puzzlesList"></div>
+  
+  <div id="puzzleView" class="hidden">
+    <button onclick="backToPuzzles()" class="mb-3 text-sm flex items-center gap-2" style="color:var(--ink-soft)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      К списку задач
+    </button>
+    
+    <div class="card p-5 mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="badge" id="puzzleLevel">—</span>
+        <span class="text-xs" style="color:var(--ink-muted)">+<span id="puzzleXP">0</span> XP</span>
+      </div>
+      <h2 class="serif text-xl font-medium mb-2" id="puzzleTitle">—</h2>
+      <p class="text-sm mb-4" style="color:var(--ink-soft)" id="puzzleDesc">—</p>
+      
+      <div id="puzzleBoardWrap" class="mb-3"></div>
+      
+      <div id="puzzleStatus" class="text-sm text-center mb-3 p-3 rounded-xl" style="background:var(--soft);color:var(--ink-soft)">
+        Найди лучший ход
+      </div>
+      
+      <div class="flex gap-2">
+        <button onclick="resetPuzzleBoard()" class="btn-ghost flex-1 py-2.5 rounded-xl text-sm">↻ Заново</button>
+        <button onclick="showPuzzleHint()" class="btn-ghost px-4 py-2.5 rounded-xl text-sm">💡 Подсказка</button>
+        <button onclick="showPuzzleSolution()" class="btn-ghost px-4 py-2.5 rounded-xl text-sm">👁 Решение</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ИГРА ============ -->
+<section class="tab-pane" id="tab-play">
+  <div id="gameSetup" class="card p-5 mb-4">
+    <h2 class="serif text-xl font-medium mb-1">Партия с компьютером</h2>
+    <p class="text-xs mb-4" style="color:var(--ink-muted)">Выбери уровень и цвет</p>
+    
+    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-muted)">Уровень соперника</label>
+    <div class="grid grid-cols-3 gap-2 mt-2 mb-4" id="difficultyGrid">
+      <button class="difficulty-btn chip py-3 px-2 rounded-2xl text-xs font-medium active" data-level="1">🌱<br>Новичок</button>
+      <button class="difficulty-btn chip py-3 px-2 rounded-2xl text-xs font-medium" data-level="2">⚔️<br>Любитель</button>
+      <button class="difficulty-btn chip py-3 px-2 rounded-2xl text-xs font-medium" data-level="3">👑<br>Мастер</button>
+    </div>
+    
+    <label class="text-xs uppercase tracking-wider" style="color:var(--ink-muted)">Твой цвет</label>
+    <div class="grid grid-cols-2 gap-2 mt-2 mb-4" id="colorGrid">
+      <button class="color-btn chip py-3 px-2 rounded-2xl text-sm font-medium active" data-color="white">⚪ Белые</button>
+      <button class="color-btn chip py-3 px-2 rounded-2xl text-sm font-medium" data-color="black">⚫ Чёрные</button>
+    </div>
+    
+    <button onclick="startGame()" class="btn-primary w-full py-3 rounded-2xl font-medium">▶ Начать игру</button>
+  </div>
+  
+  <div id="gameView" class="hidden">
+    <div class="card p-3 mb-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-xl" id="opponentIcon">🤖</span>
+        <div>
+          <p class="text-xs" style="color:var(--ink-muted)">Соперник</p>
+          <p class="text-sm font-medium" id="opponentName">Компьютер</p>
+        </div>
+      </div>
+      <div class="text-right">
+        <p class="text-xs" style="color:var(--ink-muted)">Захвачено</p>
+        <p class="text-sm" id="oppCaptured">—</p>
+      </div>
+    </div>
+    
+    <div id="gameBoardWrap" class="mb-3"></div>
+    
+    <div class="card p-3 mb-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-xl">🧑</span>
+        <div>
+          <p class="text-xs" style="color:var(--ink-muted)">Ты</p>
+          <p class="text-sm font-medium">Игрок</p>
+        </div>
+      </div>
+      <div class="text-right">
+        <p class="text-xs" style="color:var(--ink-muted)">Захвачено</p>
+        <p class="text-sm" id="myCaptured">—</p>
+      </div>
+    </div>
+    
+    <div id="gameStatus" class="card p-3 mb-3 text-center text-sm" style="color:var(--ink-soft)">
+      Твой ход (белые)
+    </div>
+    
+    <div class="grid grid-cols-3 gap-2 mb-3">
+      <button onclick="undoMove()" class="btn-ghost py-2.5 rounded-xl text-xs">↶ Отменить</button>
+      <button onclick="resignGame()" class="btn-ghost py-2.5 rounded-xl text-xs">🏳 Сдаться</button>
+      <button onclick="newGame()" class="btn-ghost py-2.5 rounded-xl text-xs">🔄 Новая</button>
+    </div>
+    
+    <div class="card p-4 mb-3">
+      <h3 class="text-sm font-semibold mb-2">История ходов</h3>
+      <div id="moveHistory" class="move-history max-h-40 overflow-y-auto scrollbar-hide">
+        <p class="text-xs" style="color:var(--ink-muted)">Партия только началась</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ПРОГРЕСС ============ -->
+<section class="tab-pane" id="tab-progress">
+  <div class="card p-5 mb-4" style="background:linear-gradient(135deg,var(--bg-card) 0%,#2a2018 100%)">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs uppercase tracking-widest" style="color:var(--ink-muted)">Уровень</p>
+        <p class="serif text-2xl font-medium mt-0.5"><span id="userLevel">1</span> · <span id="userLevelName">Пешка</span></p>
+      </div>
+      <div class="relative w-20 h-20 flex items-center justify-center">
+        <svg class="progress-ring absolute" width="80" height="80">
+          <circle cx="40" cy="40" r="34" stroke="var(--soft)" stroke-width="6" fill="none"/>
+          <circle id="progressRing" cx="40" cy="40" r="34" stroke="var(--accent)" stroke-width="6" fill="none" stroke-dasharray="213.6" stroke-dashoffset="213.6" stroke-linecap="round"/>
+        </svg>
+        <p class="serif text-lg font-medium" id="progressPercent">0%</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center justify-between text-xs mb-1.5" style="color:var(--ink-soft)">
+      <span><span id="currentXP2">0</span> XP</span>
+      <span id="nextLevelText">— XP до следующего уровня</span>
+    </div>
+    <div class="h-2 rounded-full overflow-hidden" style="background:var(--soft)">
+      <div id="xpBar" class="h-full" style="background:linear-gradient(90deg,var(--accent),var(--gold));width:0%;transition:width .8s"></div>
+    </div>
+    
+    <div class="grid grid-cols-3 gap-2 mt-4 pt-4 border-t" style="border-color:var(--line)">
+      <div class="text-center">
+        <p class="serif text-xl font-medium" id="lessonsDone">0</p>
+        <p class="text-[10px] uppercase tracking-wider" style="color:var(--ink-muted)">уроков</p>
+      </div>
+      <div class="text-center">
+        <p class="serif text-xl font-medium" id="puzzlesDone">0</p>
+        <p class="text-[10px] uppercase tracking-wider" style="color:var(--ink-muted)">задач</p>
+      </div>
+      <div class="text-center">
+        <p class="serif text-xl font-medium" id="winsCount">0</p>
+        <p class="text-[10px] uppercase tracking-wider" style="color:var(--ink-muted)">побед</p>
+      </div>
+    </div>
+  </div>
+  
+  <h3 class="serif text-lg font-medium mb-3 px-1">Достижения</h3>
+  <div class="grid grid-cols-3 gap-2 mb-4" id="achievementsGrid"></div>
+  
+  <div class="card p-2 mb-2">
+    <button onclick="resetProgress()" class="w-full p-3 flex items-center justify-between" style="color:var(--rose)">
+      <span class="text-sm">Сбросить прогресс</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+  </div>
+</section>
+
+</main>
+
+<div class="safe-bottom h-2"></div>
+
+<script>
+// ============================================================
+// CONSTANTS
+// ============================================================
+const PIECE_SYMBOLS = {
+  'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
+  'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟'
+};
+const PIECE_VALUES = { 'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9, 'k': 0 };
+const FILES = ['a','b','c','d','e','f','g','h'];
+
+const MODULES = [
+  { id: 'rules', name: 'Правила', icon: '📜', desc: 'Как ходят фигуры' },
+  { id: 'tactics', name: 'Тактика', icon: '⚔️', desc: 'Базовые приёмы' },
+  { id: 'strategy', name: 'Стратегия', icon: '🧠', desc: 'Принципы игры' },
+  { id: 'opening', name: 'Дебют', icon: '🌅', desc: 'Начало партии' },
+  { id: 'endgame', name: 'Эндшпиль', icon: '🌙', desc: 'Окончания' }
+];
+
+const LEVELS = [
+  { lvl: 1, name: 'Пешка', xp: 0, icon: '♟' },
+  { lvl: 2, name: 'Конь', xp: 50, icon: '♞' },
+  { lvl: 3, name: 'Слон', xp: 150, icon: '♝' },
+  { lvl: 4, name: 'Ладья', xp: 300, icon: '♜' },
+  { lvl: 5, name: 'Ферзь', xp: 550, icon: '♛' },
+  { lvl: 6, name: 'Король', xp: 900, icon: '♚' },
+  { lvl: 7, name: 'Мастер', xp: 1400, icon: '👑' },
+  { lvl: 8, name: 'Гроссмейстер', xp: 2000, icon: '🏆' }
+];
+
+// ============================================================
+// УРОКИ
+// ============================================================
+const LESSONS = [
+  // ============== ПРАВИЛА ==============
+  { id: 'l1', module: 'rules', level: 'easy', xp: 15,
+    title: 'Знакомство с доской',
+    desc: 'Доска, поля, координаты',
+    content: `<h2>Шахматная доска</h2>
+<p>Доска состоит из <strong>64 клеток</strong> — 8 рядов по 8 клеток. Чёрные и белые поля чередуются.</p>
+<p><strong>Главное правило расстановки:</strong> в правом нижнем углу всегда должно быть <strong>белое поле</strong>. Если поставила доску с тёмным углом справа — поверни.</p>
+<h3>Координаты</h3>
+<p>Каждая клетка имеет адрес из буквы и цифры:</p>
+<ul>
+<li><strong>Буквы</strong> (вертикали): a, b, c, d, e, f, g, h — слева направо со стороны белых</li>
+<li><strong>Цифры</strong> (горизонтали): 1-8 — снизу вверх со стороны белых</li>
+</ul>
+<p>Например, <code>e4</code> — это центральное поле, куда часто ходят пешкой в начале.</p>
+<div class="tip">💡 Запомни: буква всегда первая, цифра вторая. Сначала «дом», потом «этаж».</div>
+<h3>Расстановка</h3>
+<p>В начале партии у каждого игрока:</p>
+<ul>
+<li>1 король (♔/♚) на e1/e8</li>
+<li>1 ферзь (♕/♛) — рядом с королём, на своём цвете (белый ферзь на белом, чёрный на чёрном)</li>
+<li>2 ладьи (♖/♜) — по углам</li>
+<li>2 слона (♗/♝) — рядом с королём и ферзём</li>
+<li>2 коня (♘/♞) — между слонами и ладьями</li>
+<li>8 пешек (♙/♟) — впереди</li>
+</ul>
+<div class="info">⚪ Белые ходят первыми. Это небольшое преимущество в начале партии.</div>`
+  },
+  
+  { id: 'l2', module: 'rules', level: 'easy', xp: 15,
+    title: 'Пешка',
+    desc: 'Самая многочисленная фигура',
+    content: `<h2>Пешка ♙♟</h2>
+<p>Пешка — самая слабая, но и самая интересная фигура. Их у каждого игрока по 8.</p>
+<h3>Как ходит</h3>
+<ul>
+<li>Только <strong>вперёд</strong> (никогда назад!)</li>
+<li>Обычно на 1 клетку</li>
+<li>С начальной позиции — может на 2 клетки сразу (по желанию)</li>
+</ul>
+<h3>Как бьёт</h3>
+<p>Пешка <strong>бьёт по диагонали</strong> вперёд — по одной клетке влево или вправо. Это единственная фигура, которая ходит и бьёт по-разному!</p>
+<div class="warn">⚠️ Если впереди пешки стоит фигура — пешка не может пойти прямо. Но и взять прямо тоже не может.</div>
+<h3>Превращение</h3>
+<p>Если пешка дойдёт до последней горизонтали (8-й ряд для белых, 1-й для чёрных) — она <strong>превращается</strong> в любую фигуру (кроме короля). Обычно — в ферзя, как самую сильную.</p>
+<h3>Взятие на проходе</h3>
+<p>Особое правило: если соперник пошёл пешкой на 2 клетки и встал рядом с твоей пешкой — ты можешь взять её, как будто она пошла на 1 клетку. Только сразу следующим ходом!</p>
+<div class="tip">💡 Пешки — основа структуры позиции. Хорошая пешечная структура часто решает партию.</div>`
+  },
+  
+  { id: 'l3', module: 'rules', level: 'easy', xp: 15,
+    title: 'Ладья',
+    desc: 'Башня на флангах',
+    content: `<h2>Ладья ♖♜</h2>
+<p>Ладья — мощная фигура. Она стоит примерно <strong>5 пешек</strong>.</p>
+<h3>Как ходит</h3>
+<p>Ладья ходит и бьёт <strong>по прямым линиям</strong>:</p>
+<ul>
+<li>По вертикали (вверх-вниз) — на любое количество клеток</li>
+<li>По горизонтали (влево-вправо) — на любое количество клеток</li>
+<li>Через свои и чужие фигуры <strong>прыгать не может</strong></li>
+</ul>
+<h3>Где сильна</h3>
+<p>Ладья любит <strong>открытые линии</strong> — вертикали без пешек. На открытой линии она простреливает всю доску.</p>
+<p>Ладьи особенно сильны:</p>
+<ul>
+<li>На 7-й горизонтали (для белых) или 2-й (для чёрных) — там они нападают на пешки соперника</li>
+<li>В сдвоенном виде — две ладьи на одной вертикали поддерживают друг друга</li>
+</ul>
+<div class="info">ℹ️ В начале партии ладьи стоят по углам и долго не вступают в игру. Их нужно «развить» — освободить путь, убрав пешки и фигуры.</div>
+<h3>Рокировка</h3>
+<p>Особый ход с участием ладьи — об этом будет отдельный урок.</p>`
+  },
+  
+  { id: 'l4', module: 'rules', level: 'easy', xp: 15,
+    title: 'Слон',
+    desc: 'Дальнобойная фигура',
+    content: `<h2>Слон ♗♝</h2>
+<p>Слон стоит примерно <strong>3 пешки</strong>.</p>
+<h3>Как ходит</h3>
+<p>Слон ходит и бьёт только <strong>по диагоналям</strong> — на любое количество клеток.</p>
+<div class="warn">⚠️ Каждый слон ходит только по полям одного цвета! Белопольный слон навсегда останется на белых полях, чернопольный — на чёрных.</div>
+<h3>Особенности</h3>
+<p>У каждого игрока 2 слона: один на белых полях, другой на чёрных. Они контролируют разные половины доски.</p>
+<ul>
+<li><strong>Пара слонов</strong> — мощная сила. Вместе они контролируют клетки обоих цветов</li>
+<li>Слон без своей пары — менее ценен</li>
+</ul>
+<h3>Где сильны</h3>
+<p>Слоны любят <strong>открытые позиции</strong> с длинными диагоналями. В закрытых позициях с большим количеством пешек слоны слабее коней.</p>
+<div class="tip">💡 «Хороший слон» — тот, чьи пешки не блокируют ему диагонали. «Плохой слон» — упёрся в свои же пешки.</div>`
+  },
+  
+  { id: 'l5', module: 'rules', level: 'easy', xp: 20,
+    title: 'Конь',
+    desc: 'Прыгающая фигура',
+    content: `<h2>Конь ♘♞</h2>
+<p>Конь стоит примерно <strong>3 пешки</strong> (как слон).</p>
+<h3>Как ходит</h3>
+<p>Конь ходит буквой <strong>«Г» (или «L»)</strong>:</p>
+<ul>
+<li>2 клетки в одну сторону + 1 клетку перпендикулярно</li>
+<li>Или: 1 клетку в одну сторону + 2 перпендикулярно</li>
+</ul>
+<div class="info">🦘 Конь — единственная фигура, которая <strong>прыгает</strong> через другие! Ему всё равно, что стоит между начальной и конечной клеткой.</div>
+<h3>Особенности</h3>
+<ul>
+<li>С каждым ходом конь меняет цвет поля (был на белом — стал на чёрном)</li>
+<li>В центре доски конь атакует до 8 полей, в углу — только 2</li>
+<li>Конь — сильная фигура в закрытых позициях, где слоны спотыкаются о пешки</li>
+</ul>
+<div class="tip">💡 Поговорка: «Конь на краю — стыд и срам». Старайся держать коней ближе к центру.</div>
+<h3>Вилка</h3>
+<p>Конь часто делает «вилку» — нападает одновременно на 2 фигуры соперника. Особенно опасна вилка на короля и ферзя!</p>`
+  },
+  
+  { id: 'l6', module: 'rules', level: 'easy', xp: 20,
+    title: 'Ферзь',
+    desc: 'Самая мощная фигура',
+    content: `<h2>Ферзь ♕♛</h2>
+<p>Ферзь — самая сильная фигура. Стоит примерно <strong>9 пешек</strong> (или ладья + слон).</p>
+<h3>Как ходит</h3>
+<p>Ферзь сочетает возможности ладьи и слона:</p>
+<ul>
+<li>По прямым линиям (как ладья) — на любое количество клеток</li>
+<li>По диагоналям (как слон) — на любое количество клеток</li>
+</ul>
+<p>В центре доски ферзь контролирует до 27 клеток!</p>
+<div class="warn">⚠️ Не выводи ферзя слишком рано! Соперник будет нападать на него лёгкими фигурами и заставлять отступать с потерей темпа.</div>
+<h3>Когда использовать</h3>
+<p>Ферзя обычно вводят в игру после развития коней и слонов. Он силён в атаке на короля, в эндшпиле и при матовых комбинациях.</p>
+<div class="tip">💡 Потерять ферзя за лёгкую фигуру — почти всегда проигранная партия. Береги ферзя!</div>
+<h3>Постановка ферзя</h3>
+<p>Запомни мнемонику: «<strong>ферзь любит свой цвет</strong>». В начальной позиции:</p>
+<ul>
+<li>Белый ферзь — на белом поле d1</li>
+<li>Чёрный ферзь — на чёрном поле d8</li>
+</ul>`
+  },
+  
+  { id: 'l7', module: 'rules', level: 'medium', xp: 25,
+    title: 'Король',
+    desc: 'Самая важная фигура',
+    content: `<h2>Король ♔♚</h2>
+<p>Король — главная фигура. Его нельзя «съесть» — партия заканчивается, когда король получает мат.</p>
+<h3>Как ходит</h3>
+<p>Король ходит на <strong>1 клетку</strong> в любую сторону: вперёд, назад, в сторону, по диагонали.</p>
+<div class="warn">⚠️ Король не может пойти на клетку, которая <strong>атакована</strong> фигурой соперника. И не может оставаться на атакованной клетке.</div>
+<h3>Шах и мат</h3>
+<ul>
+<li><strong>Шах</strong> — нападение на короля. Это нужно объявлять (или защищаться сразу). Есть 3 способа защиты: уйти королём, закрыться фигурой, побить нападающую фигуру</li>
+<li><strong>Мат</strong> — шах, от которого нет защиты. Конец партии</li>
+<li><strong>Пат</strong> — у короля нет ходов, но он не под шахом. Это <strong>ничья</strong>!</li>
+</ul>
+<div class="info">ℹ️ Цель шахмат — поставить мат сопернику или вынудить его сдаться, не теряя своего короля.</div>
+<h3>Король в эндшпиле</h3>
+<p>В дебюте и миттельшпиле король прячется. Но в <strong>эндшпиле</strong> (когда мало фигур) король становится боевой фигурой и должен идти в центр.</p>`
+  },
+  
+  { id: 'l8', module: 'rules', level: 'medium', xp: 25,
+    title: 'Рокировка',
+    desc: 'Особый ход короля и ладьи',
+    content: `<h2>Рокировка</h2>
+<p>Рокировка — единственный ход, когда двигаются <strong>две фигуры одновременно</strong>: король и ладья.</p>
+<h3>Зачем нужна</h3>
+<ul>
+<li>Прячет короля в безопасное место (за пешками на фланге)</li>
+<li>Активирует ладью — выводит её ближе к центру</li>
+</ul>
+<h3>Как делать</h3>
+<p>Король идёт на 2 клетки в сторону ладьи, ладья перепрыгивает через короля и встаёт рядом с ним.</p>
+<h3>Виды рокировки</h3>
+<ul>
+<li><strong>Короткая</strong> (на королевский фланг) — 0-0. Король идёт на g1/g8, ладья на f1/f8</li>
+<li><strong>Длинная</strong> (на ферзевый фланг) — 0-0-0. Король идёт на c1/c8, ладья на d1/d8</li>
+</ul>
+<h3>Когда нельзя рокировать</h3>
+<ul>
+<li>Король или ладья уже ходили</li>
+<li>Король сейчас под шахом</li>
+<li>Король после рокировки окажется под шахом</li>
+<li>Король проходит через атакованное поле</li>
+<li>Между королём и ладьёй есть фигуры</li>
+</ul>
+<div class="tip">💡 Старайся сделать рокировку в первые 10-12 ходов партии. Король в центре — частая причина быстрого поражения.</div>`
+  },
+
+  // ============== ТАКТИКА ==============
+  { id: 'l9', module: 'tactics', level: 'medium', xp: 30,
+    title: 'Ценность фигур',
+    desc: 'Что чего стоит',
+    content: `<h2>Ценность фигур</h2>
+<p>Чтобы оценить, выгоден ли размен, нужно знать примерную стоимость фигур.</p>
+<h3>Шкала ценности</h3>
+<ul>
+<li>♟ <strong>Пешка</strong> — 1 очко</li>
+<li>♞ <strong>Конь</strong> — 3 очка</li>
+<li>♝ <strong>Слон</strong> — 3 очка</li>
+<li>♜ <strong>Ладья</strong> — 5 очков</li>
+<li>♛ <strong>Ферзь</strong> — 9 очков</li>
+<li>♚ <strong>Король</strong> — бесценен (потеря = конец партии)</li>
+</ul>
+<h3>Размены</h3>
+<p>Размен <strong>выгоден</strong>, если ты получаешь больше, чем отдаёшь:</p>
+<ul>
+<li>Конь за ладью — выгодно (3 за 5, выигрыш = качество)</li>
+<li>Конь за слона — равный размен</li>
+<li>Ферзь за коня — катастрофа</li>
+<li>Ладья за ладью + пешка — небольшая выгода</li>
+</ul>
+<h3>Тонкости</h3>
+<p>Цифры — лишь ориентир. В реальной партии:</p>
+<ul>
+<li><strong>2 слона</strong> часто сильнее 2 коней (из-за пары)</li>
+<li>В <strong>закрытой позиции</strong> конь может быть сильнее слона</li>
+<li><strong>Активная</strong> фигура важнее пассивной, даже если она «дешевле»</li>
+<li>Пешка на 7-й горизонтали (готовая стать ферзём) стоит почти как ладья</li>
+</ul>
+<div class="tip">💡 Считай <strong>материал</strong> в начале каждого расчёта. Если у соперника фигур больше — нужна тактика. Если у тебя — упрощай позицию.</div>`
+  },
+  
+  { id: 'l10', module: 'tactics', level: 'medium', xp: 30,
+    title: 'Вилка',
+    desc: 'Двойной удар',
+    content: `<h2>Вилка</h2>
+<p><strong>Вилка</strong> — одновременное нападение одной фигурой на две (или больше) фигуры соперника.</p>
+<h3>Кто чаще делает вилки</h3>
+<ul>
+<li><strong>Конь</strong> — главный мастер вилок! Особенно на короля и ферзя</li>
+<li><strong>Пешка</strong> — недооценённая вилка на 2 фигуры по диагонали</li>
+<li><strong>Ферзь</strong> — длинные вилки через всю доску</li>
+<li><strong>Слон</strong>, <strong>ладья</strong> — на одной диагонали/линии</li>
+</ul>
+<h3>Опаснее всего — вилка с шахом</h3>
+<p>Если одна из атакованных фигур — король, соперник <strong>обязан</strong> сначала уйти от шаха. А вторую фигуру ты заберёшь следующим ходом.</p>
+<h3>Семейная вилка</h3>
+<p>Конская вилка на короля и ферзя называется «семейной». Это самая частая тактика, на которой теряют партии новички.</p>
+<div class="warn">⚠️ Всегда смотри, может ли конь соперника прыгнуть на клетку, откуда атакует короля и другую важную фигуру.</div>
+<h3>Как использовать</h3>
+<ol>
+<li>Найди две незащищённые (или плохо защищённые) фигуры соперника</li>
+<li>Проверь — есть ли клетка, с которой одна твоя фигура атакует обе</li>
+<li>Можешь ли ты безопасно туда попасть?</li>
+</ol>`,
+    exercise: {
+      fen: '4k3/8/8/3n4/8/2K5/3Q4/8 w - - 0 1',
+      task: 'Чёрный конь сделал вилку на короля и ферзя. Найди ход королём, чтобы спасти ситуацию (помни — нужно убрать короля от шаха, ферзь будет потерян, но это меньшее зло, чем мат).',
+      hint: 'Король должен уйти от шаха. Лучшее — отойти на безопасное поле.',
+      solutions: ['Kc4', 'Kd4', 'Kb4', 'Kb3', 'Kc2', 'Kd3'],
+      successMsg: 'Верно! Король ушёл от шаха. Конечно, ферзь потерян — но это пример того, как опасна вилка.'
+    }
+  },
+  
+  { id: 'l11', module: 'tactics', level: 'medium', xp: 30,
+    title: 'Связка',
+    desc: 'Сковываем фигуру',
+    content: `<h2>Связка</h2>
+<p><strong>Связка</strong> — атака на фигуру, за которой стоит более ценная. Связанная фигура не может (или не должна) ходить.</p>
+<h3>Виды связок</h3>
+<h3>1. Полная (абсолютная) связка</h3>
+<p>За связанной фигурой стоит король. Связанная фигура <strong>не имеет права</strong> ходить — это незаконно (король окажется под шахом).</p>
+<p><em>Пример:</em> белый слон на c4 связал чёрного коня на e6, за которым стоит король на g8. Конь полностью обездвижен.</p>
+<h3>2. Относительная связка</h3>
+<p>За связанной фигурой стоит ценная фигура (но не король). Связанная фигура <strong>может</strong> ходить, но это потеря материала.</p>
+<p><em>Пример:</em> ладья связывает коня, за которым ферзь.</p>
+<h3>Кто связывает</h3>
+<p>Только дальнобойные фигуры:</p>
+<ul>
+<li><strong>Слон</strong> — по диагоналям</li>
+<li><strong>Ладья</strong> — по линиям</li>
+<li><strong>Ферзь</strong> — по линиям и диагоналям</li>
+</ul>
+<h3>Использование</h3>
+<ol>
+<li>Связал фигуру? — Нападай на неё пешками или другими фигурами</li>
+<li>Связанная фигура не сможет защититься или уйти</li>
+<li>В итоге она будет потеряна</li>
+</ol>
+<div class="tip">💡 Защита от связки — заслонить более ценную фигуру другой, или убрать ценную фигуру из-под удара.</div>`
+  },
+  
+  { id: 'l12', module: 'tactics', level: 'hard', xp: 35,
+    title: 'Двойной удар',
+    desc: 'Атакуем двумя фигурами',
+    content: `<h2>Двойной удар</h2>
+<p>Похоже на вилку, но шире: <strong>любая ситуация</strong>, когда соперник не может защитить все свои угрозы одним ходом.</p>
+<h3>Принцип</h3>
+<ol>
+<li>Создаёшь две угрозы одним ходом</li>
+<li>Соперник может защититься только от одной</li>
+<li>Реализуешь вторую</li>
+</ol>
+<h3>Виды двойных ударов</h3>
+<ul>
+<li><strong>Вилка</strong> — одна фигура атакует две</li>
+<li><strong>Открытый удар</strong> — отходишь одной фигурой, открывая удар другой</li>
+<li><strong>Двойной шах</strong> — шах двумя фигурами одновременно (король обязан уйти, других защит нет)</li>
+<li><strong>Угроза мата + взятие</strong> — соперник защищается от мата, ты забираешь фигуру</li>
+</ul>
+<h3>Открытое нападение</h3>
+<p>Одна фигура отходит, и через неё «выстреливает» другая.</p>
+<p><em>Пример:</em> твой конь стоит между твоей ладьёй и ферзём соперника. Конь отходит и нападает, скажем, на ладью соперника. Одновременно открывшаяся твоя ладья атакует ферзя. <strong>Двойной удар!</strong></p>
+<div class="info">🎯 Открытое нападение — мощнейшая тактика. Когда найдёшь его в своей партии — почти наверняка выиграешь материал.</div>
+<h3>Как тренировать</h3>
+<p>Решай задачи на тему «найди мат в 1-2 хода» — там почти всегда работает двойной удар или его разновидность.</p>`
+  },
+  
+  // ============== СТРАТЕГИЯ ==============
+  { id: 'l13', module: 'strategy', level: 'medium', xp: 30,
+    title: 'Принципы дебюта',
+    desc: 'Что делать в первые ходы',
+    content: `<h2>3 главных принципа дебюта</h2>
+<p>В первые 10-15 ходов партии (дебют) есть три задачи. Делай их одновременно.</p>
+<h3>1. Контроль центра</h3>
+<p>Центральные клетки <strong>e4, d4, e5, d5</strong> — самые важные на доске. Фигуры в центре атакуют максимум полей.</p>
+<p>Способы контроля:</p>
+<ul>
+<li>Поставить туда пешку (e4, d4)</li>
+<li>Атаковать центр пешками с флангов</li>
+<li>Развивать коней на f3/c3 — они тоже бьют центральные поля</li>
+</ul>
+<h3>2. Развитие фигур</h3>
+<p><strong>Развить фигуру</strong> = вывести её с начального места в активную позицию.</p>
+<ul>
+<li>Сначала <strong>лёгкие фигуры</strong> (кони и слоны) — они быстрее доходят до боевых позиций</li>
+<li>Потом тяжёлые (ферзь и ладьи)</li>
+<li>Не ходи одной фигурой по несколько раз — теряешь время</li>
+</ul>
+<h3>3. Безопасность короля</h3>
+<p>Сделай <strong>рокировку</strong> в первые 10 ходов. Не задерживай короля в центре!</p>
+<h3>Что НЕ делать в дебюте</h3>
+<ul>
+<li>❌ Выводить ферзя слишком рано — его будут гонять</li>
+<li>❌ Двигать пешки на флангах без причины — теряешь темп</li>
+<li>❌ Ходить одной фигурой много раз</li>
+<li>❌ Атаковать без развития</li>
+</ul>
+<div class="tip">💡 Эти три принципа — половина шахматного мастерства. Их соблюдение даёт устойчивое преимущество против слабых соперников.</div>`
+  },
+  
+  { id: 'l14', module: 'strategy', level: 'hard', xp: 35,
+    title: 'Активность фигур',
+    desc: 'Сильные и слабые фигуры',
+    content: `<h2>Активность фигур</h2>
+<p>Не все фигуры одинаково «полезны». Активная фигура с теми же характеристиками сильнее пассивной в разы.</p>
+<h3>Что делает фигуру активной</h3>
+<ul>
+<li><strong>Контролирует много клеток</strong> — стоит в центре или на открытой линии</li>
+<li><strong>Угрожает</strong> — нападает на фигуры/слабые поля соперника</li>
+<li><strong>Координирует</strong> — взаимодействует с другими твоими фигурами</li>
+</ul>
+<h3>Что делает фигуру пассивной</h3>
+<ul>
+<li>Стоит за своими пешками</li>
+<li>Защищает только одну клетку</li>
+<li>Не может ничего атаковать</li>
+<li>Зажата в углу</li>
+</ul>
+<h3>Активность для каждой фигуры</h3>
+<ul>
+<li><strong>Конь</strong> — в центре или на 5/4-й горизонтали, защищённый пешкой («аванпост»)</li>
+<li><strong>Слон</strong> — на длинной диагонали без помех</li>
+<li><strong>Ладья</strong> — на открытой линии или 7-й горизонтали</li>
+<li><strong>Ферзь</strong> — гибкий, но не слишком далеко от своих фигур</li>
+</ul>
+<h3>«Плохой» слон</h3>
+<p>Слон, чьи диагонали блокированы своими же пешками. Чтобы его улучшить — двигай эти пешки или меняй слона.</p>
+<div class="info">🎯 Перед каждым ходом спроси: «Делает ли этот ход мою фигуру активнее? А моя самая пассивная фигура — её можно вывести?»</div>
+<h3>Принцип</h3>
+<p>Если у тебя много активных фигур, а у соперника — пассивных, ты доминируешь, даже при равенстве материала.</p>`
+  },
+  
+  { id: 'l15', module: 'strategy', level: 'hard', xp: 35,
+    title: 'Слабые поля',
+    desc: 'Дыры в позиции',
+    content: `<h2>Слабые поля</h2>
+<p><strong>Слабое поле</strong> — клетка, которую игрок не может защитить пешками (все пешки уже прошли мимо).</p>
+<h3>Откуда берутся слабости</h3>
+<p>Когда двигаешь пешку, ты <strong>навсегда</strong> ослабляешь поля, которые она защищала. Поэтому:</p>
+<div class="warn">⚠️ <strong>Любой ход пешкой — необратим.</strong> Прежде чем двинуть пешку, подумай: какие поля я ослабляю?</div>
+<h3>Особо опасные слабости</h3>
+<ul>
+<li><strong>Поля рядом с королём</strong> (например, h6, g6, f6 у короткой рокировки) — на них может приземлиться конь и поставить мат</li>
+<li><strong>Поля 6-й горизонтали</strong> в центре — туда любит прыгать конь соперника</li>
+</ul>
+<h3>Как использовать</h3>
+<ol>
+<li>Заметил слабое поле у соперника?</li>
+<li>Постарайся занять его конём (он там в безопасности — пешками не сгонишь)</li>
+<li>Защити коня своей пешкой — теперь это <strong>аванпост</strong></li>
+<li>С аванпоста конь будет годами доминировать на доске</li>
+</ol>
+<h3>Защита от слабостей</h3>
+<ul>
+<li>Не делай <strong>«дыр»</strong> в пешечной структуре без необходимости</li>
+<li>Если ослабил поле — поставь туда фигуру для защиты</li>
+<li>Меняй фигуры соперника, которые могут попасть на слабые поля</li>
+</ul>
+<div class="tip">💡 «Дыра» в пешках у короля = риск мата. «Дыра» в центре = доминирование коня соперника.</div>`
+  },
+  
+  // ============== ДЕБЮТ ==============
+  { id: 'l16', module: 'opening', level: 'medium', xp: 30,
+    title: 'Итальянская партия',
+    desc: 'Классический дебют для начала',
+    content: `<h2>Итальянская партия</h2>
+<p>Один из старейших и самых полезных дебютов для изучения. Реализует все принципы дебюта в чистом виде.</p>
+<h3>Ходы</h3>
+<ol>
+<li><strong>1. e4 e5</strong> — оба заняли центр</li>
+<li><strong>2. Nf3 Nc6</strong> — белые нападают на пешку e5, чёрные защищают</li>
+<li><strong>3. Bc4</strong> — слон выходит на активную диагональ a2-g8, целит в f7 (самая слабая клетка чёрных в начале!)</li>
+<li><strong>3...Bc5</strong> — чёрные тоже выводят слона</li>
+<li><strong>4. c3</strong> — готовит d4 (захват центра пешками)</li>
+<li><strong>4...Nf6</strong> — конь развит, атакует e4</li>
+<li><strong>5. d4</strong> — пешечный удар в центре</li>
+</ol>
+<h3>Что важно</h3>
+<ul>
+<li>Белые делают <strong>прямую атаку на f7</strong> — слабую клетку</li>
+<li>Обе стороны быстро развивают фигуры и готовят рокировку</li>
+<li>Возникает <strong>открытая позиция</strong>, где активны слоны</li>
+</ul>
+<h3>Главные идеи для белых</h3>
+<ul>
+<li>Атаковать пункт f7</li>
+<li>Контролировать центр пешками e4 и d4</li>
+<li>Делать короткую рокировку</li>
+<li>Развивать ферзевого слона на g5 или e3</li>
+</ul>
+<div class="info">📚 Итальянская партия играется на всех уровнях — от новичков до гроссмейстеров. Знать её — значит знать классику.</div>
+<h3>Альтернатива чёрных: защита двух коней</h3>
+<p>После 3.Bc4 чёрные могут сыграть 3...Nf6 вместо Bc5. Это защита двух коней — более активный, но рискованный путь.</p>`
+  },
+  
+  { id: 'l17', module: 'opening', level: 'hard', xp: 35,
+    title: 'Сицилианская защита',
+    desc: 'Главное оружие чёрных',
+    content: `<h2>Сицилианская защита</h2>
+<p>Самый популярный ответ чёрных на 1.e4 на высоком уровне. Сложный, но боевой дебют.</p>
+<h3>Ходы</h3>
+<ol>
+<li><strong>1. e4 c5</strong> — чёрные не идут в симметрию (e5), а атакуют центр с фланга</li>
+</ol>
+<h3>Идея чёрных</h3>
+<p>Пешка c5 атакует поле d4 — мешает белым построить идеальный центр e4+d4. Дальше чёрные делают:</p>
+<ul>
+<li>d6 (поддержка центра)</li>
+<li>Nf6 (развитие, атака на e4)</li>
+<li>Nc6 (развитие)</li>
+<li>g6 + Bg7 (фианкетто слона на длинной диагонали)</li>
+</ul>
+<h3>Идея белых</h3>
+<p>Белые играют в открытую борьбу:</p>
+<ul>
+<li><strong>2. Nf3</strong> и <strong>3. d4</strong> — пешечный удар в центре</li>
+<li>После размена возникает асимметричная позиция: у белых пешки в центре, у чёрных — на ферзевом фланге</li>
+</ul>
+<div class="warn">⚠️ Сицилианка — острый, тактический дебют. Один неверный ход — катастрофа. Не выбирай его, пока не освоишь основы тактики.</div>
+<h3>Главные варианты</h3>
+<ul>
+<li><strong>Найдорф</strong> — после 5...a6, любимый дебют Каспарова и Фишера</li>
+<li><strong>Дракон</strong> — с фианкетто на g7, очень острый</li>
+<li><strong>Свешников</strong> — атакующий вариант для чёрных</li>
+</ul>
+<div class="tip">💡 Если хочешь играть сицилианку — выбери ОДИН вариант и изучи его глубоко. Иначе запутаешься.</div>`
+  },
+  
+  // ============== ЭНДШПИЛЬ ==============
+  { id: 'l18', module: 'endgame', level: 'medium', xp: 30,
+    title: 'Король в эндшпиле',
+    desc: 'Активная фигура',
+    content: `<h2>Король в эндшпиле</h2>
+<p>В дебюте и миттельшпиле король прячется. В эндшпиле — становится <strong>активной фигурой</strong>.</p>
+<h3>Почему так</h3>
+<p>Когда на доске мало фигур, шансов на мат меньше. Но король сам по себе — сильная фигура: он атакует 8 клеток вокруг себя.</p>
+<h3>Принцип</h3>
+<div class="tip">💡 <strong>В эндшпиле король идёт в центр.</strong> Это правило №1.</div>
+<p>Король в центре:</p>
+<ul>
+<li>Поддерживает свои пешки</li>
+<li>Атакует пешки соперника</li>
+<li>Контролирует ключевые поля</li>
+</ul>
+<h3>Оппозиция</h3>
+<p>Если два короля стоят на одной линии (горизонтали, вертикали или диагонали) через одну клетку — это <strong>оппозиция</strong>. Тот, чей ход <strong>не</strong> сейчас, имеет преимущество (соперник вынужден уступить дорогу).</p>
+<p>Например, белый король на e4, чёрный король на e6 — между ними поле e5. Если ход белых, они должны отойти. Если ход чёрных — отходят они. Оппозиция — мощный приём в пешечных эндшпилях.</p>
+<h3>Правило квадрата</h3>
+<p>Если у соперника проходная пешка без поддержки, ты можешь догнать её королём, если попадаешь в «<strong>квадрат пешки</strong>» — мысленно проведи квадрат от пешки до края её цели. Если твой король внутри квадрата — успеешь догнать.</p>
+<h3>Ошибки новичков в эндшпиле</h3>
+<ul>
+<li>❌ Боятся вывести короля</li>
+<li>❌ Двигают пешки без поддержки короля</li>
+<li>❌ Не считают оппозицию</li>
+</ul>`
+  },
+  
+  { id: 'l19', module: 'endgame', level: 'hard', xp: 35,
+    title: 'Мат двумя ладьями',
+    desc: 'Базовая техника мата',
+    content: `<h2>Мат двумя ладьями</h2>
+<p>Базовый эндшпильный мат, который ты должен ставить с закрытыми глазами. Это <strong>линейный мат</strong>.</p>
+<h3>Идея</h3>
+<p>Две ладьи «загоняют» одинокого короля на край доски, отрезая ему ряды по очереди.</p>
+<h3>Алгоритм</h3>
+<ol>
+<li>Поставь одну ладью на горизонталь, прилегающую к королю соперника. Король не может на неё пойти</li>
+<li>Поставь вторую ладью на следующую горизонталь — она тоже «отрезает» ряд</li>
+<li>Когда король отступит — переведи первую ладью на новую горизонталь, ближе к краю</li>
+<li>Продолжай, пока король не упрётся в край доски</li>
+<li>Шах ладьёй на последнюю горизонталь — мат!</li>
+</ol>
+<h3>Важно</h3>
+<ul>
+<li>Ладьи должны быть <strong>подальше</strong> от короля соперника, чтобы он не мог их съесть</li>
+<li>Если король соперника подходит к одной из ладей — отгони её на дальний край доски (например, ладья с d-вертикали уходит на a-вертикаль)</li>
+</ul>
+<div class="tip">💡 Запомни принцип: «Король <strong>не может</strong> атаковать ладью, если она достаточно далеко». 5-6 клеток между ними — безопасно.</div>
+<h3>Время на мат</h3>
+<p>Из любой позиции мат двумя ладьями ставится максимум за <strong>~15-20 ходов</strong>. Если у тебя ладьи и пешки против одного короля — это техническая победа.</p>
+<h3>Похожие маты</h3>
+<ul>
+<li><strong>Мат ферзём</strong> — ещё проще, ферзь работает как ладья + слон</li>
+<li><strong>Мат ладьёй и королём</strong> — сложнее, нужна оппозиция</li>
+<li><strong>Мат двумя слонами</strong> — труднее, но реален (~30 ходов)</li>
+</ul>`
+  }
+];
+
+// ============================================================
+// ЗАДАЧИ (PUZZLES)
+// ============================================================
+const PUZZLES = [
+  {
+    id: 'pz1', level: 'easy', xp: 20,
+    title: 'Мат в 1 ход — ферзём',
+    desc: 'Белые ставят мат в один ход. Используй ферзя.',
+    fen: '6k1/5ppp/8/8/8/8/5PPP/4Q1K1 w - - 0 1',
+    solution: 'Qe8',
+    hint: 'Ферзь по 8-й горизонтали даёт мат — король заперт пешками.'
+  },
+  {
+    id: 'pz2', level: 'easy', xp: 20,
+    title: 'Мат в 1 ход — ладьёй',
+    desc: 'Белые ставят мат в один ход.',
+    fen: '7k/5ppp/8/8/8/8/5PPP/R6K w - - 0 1',
+    solution: 'Ra8',
+    hint: 'Ладья на 8-ю горизонталь!'
+  },
+  {
+    id: 'pz3', level: 'easy', xp: 25,
+    title: 'Детский мат',
+    desc: 'Белые ставят мат в 1 ход. Атаковано f7!',
+    fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 1',
+    solution: 'Qxf7',
+    hint: 'Ферзь берёт пешку f7 — это мат, поле защищено только королём.'
+  },
+  {
+    id: 'pz4', level: 'easy', xp: 25,
+    title: 'Возьми коня',
+    desc: 'Белые могут забрать чёрного коня бесплатно. Найди ход.',
+    fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1',
+    solution: 'Nf3',
+    hint: 'Развитие коня атакует чёрную пешку e5, а вилки нет — но это не задача на взятие, а на правильное развитие.'
+  },
+  {
+    id: 'pz5', level: 'medium', xp: 30,
+    title: 'Вилка конём',
+    desc: 'Сделай вилку белым конём, атакуя короля и ферзя.',
+    fen: '4k3/8/8/2q5/8/8/3N4/4K3 w - - 0 1',
+    solution: 'Nc4',
+    hint: 'Конь прыгает на c4 — оттуда атакует и короля (нет, не атакует) и ферзя на c5.',
+    altSolutions: ['Nb3', 'Nc4']
+  },
+  {
+    id: 'pz6', level: 'medium', xp: 35,
+    title: 'Мат в 1 — рокировкой',
+    desc: 'Белые могут поставить мат рокировкой!',
+    fen: 'r3k2r/8/8/8/8/8/4q3/R3K2R w KQkq - 0 1',
+    solution: 'O-O-O',
+    hint: 'Длинная рокировка ставит ладью с шахом, и это мат.',
+    altSolutions: ['O-O-O']
+  },
+  {
+    id: 'pz7', level: 'medium', xp: 35,
+    title: 'Связка',
+    desc: 'Свяжи чёрного коня слоном.',
+    fen: '3qk3/8/4n3/8/8/8/8/2B1K3 w - - 0 1',
+    solution: 'Bg5',
+    hint: 'Слон на g5 связывает коня с ферзём.',
+    altSolutions: ['Bg5', 'Bh6']
+  },
+  {
+    id: 'pz8', level: 'medium', xp: 35,
+    title: 'Защита от мата',
+    desc: 'Чёрные угрожают матом на h2. Найди защиту белыми.',
+    fen: '6k1/5ppp/8/8/8/8/q4PPP/6K1 w - - 0 1',
+    solution: 'g3',
+    hint: 'Открой королю поле для отступления через пешку.',
+    altSolutions: ['g3', 'h3']
+  },
+  {
+    id: 'pz9', level: 'hard', xp: 40,
+    title: 'Двойной удар',
+    desc: 'Найди ход ферзём, атакующий сразу две фигуры.',
+    fen: '4k3/3n4/8/8/2r5/8/8/2Q1K3 w - - 0 1',
+    solution: 'Qc7',
+    hint: 'Ферзь нападает на коня и одновременно угрожает ладье.',
+    altSolutions: ['Qc7']
+  },
+  {
+    id: 'pz10', level: 'hard', xp: 45,
+    title: 'Мат в 2 хода',
+    desc: 'Белые: первый ход — шах ферзём, потом мат.',
+    fen: '6k1/5ppp/8/8/8/8/5PPP/Q5K1 w - - 0 1',
+    solution: 'Qa8',
+    hint: 'Ферзь на a8 — шах, после Kh7 → Qe8 был бы мат, но в задаче ход 1: Qa8+ ведёт к мату.',
+    altSolutions: ['Qa8', 'Qa7', 'Qb1']
+  }
+];
+
+// ============================================================
+// ACHIEVEMENTS
+// ============================================================
+const ACHIEVEMENTS = [
+  { id: 'first-lesson', name: 'Первый шаг', icon: '👣', desc: 'Первый урок', check: s => s.completedLessons.length >= 1 },
+  { id: 'rules-done', name: 'Знаток правил', icon: '📜', desc: 'Все уроки модуля «Правила»', check: s => LESSONS.filter(l => l.module === 'rules').every(l => s.completedLessons.includes(l.id)) },
+  { id: 'first-puzzle', name: 'Первая задача', icon: '🧩', desc: 'Решить первую задачу', check: s => s.solvedPuzzles.length >= 1 },
+  { id: '5-puzzles', name: 'Тактик', icon: '⚔️', desc: 'Решить 5 задач', check: s => s.solvedPuzzles.length >= 5 },
+  { id: '10-puzzles', name: 'Мастер задач', icon: '🎯', desc: '10 задач решено', check: s => s.solvedPuzzles.length >= 10 },
+  { id: 'first-win', name: 'Первая победа', icon: '🏆', desc: 'Победить компьютер', check: s => s.wins >= 1 },
+  { id: '5-wins', name: 'Победитель', icon: '👑', desc: '5 побед', check: s => s.wins >= 5 },
+  { id: 'beat-medium', name: 'Любителя побил', icon: '⚔️', desc: 'Победить уровень «Любитель»', check: s => s.beatLevels.includes(2) },
+  { id: 'beat-hard', name: 'Мастера побил', icon: '🏆', desc: 'Победить уровень «Мастер»', check: s => s.beatLevels.includes(3) },
+  { id: 'tactics-done', name: 'Тактический ум', icon: '🧠', desc: 'Все уроки «Тактика»', check: s => LESSONS.filter(l => l.module === 'tactics').every(l => s.completedLessons.includes(l.id)) },
+  { id: 'level-3', name: 'Слон', icon: '♝', desc: '3 уровень', check: s => calcLevel(s.totalXP).lvl >= 3 },
+  { id: 'level-5', name: 'Ферзь', icon: '♛', desc: '5 уровень', check: s => calcLevel(s.totalXP).lvl >= 5 },
+  { id: 'all-lessons', name: 'Выпускник', icon: '🎓', desc: 'Все уроки пройдены', check: s => s.completedLessons.length >= LESSONS.length },
+  { id: 'no-hints', name: 'Без подсказок', icon: '💪', desc: '5 задач без подсказок', check: s => s.puzzlesNoHint >= 5 }
+];
+
+// ============================================================
+// STATE
+// ============================================================
+const STORAGE_KEY = 'chesspath_v1';
+let state = loadState();
+
+function defaultState() {
+  return {
+    completedLessons: [],
+    solvedPuzzles: [],
+    totalXP: 0,
+    wins: 0,
+    losses: 0,
+    draws: 0,
+    beatLevels: [],
+    unlockedAchievements: [],
+    puzzlesNoHint: 0,
+    hintsUsedThisPuzzle: false
+  };
+}
+function loadState() { try { const r = localStorage.getItem(STORAGE_KEY); if (r) return { ...defaultState(), ...JSON.parse(r) }; } catch(e){} return defaultState(); }
+function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){} }
+function calcLevel(xp) { let c = LEVELS[0]; for (const l of LEVELS) { if (xp >= l.xp) c = l; else break; } const ni = LEVELS.findIndex(l => l.lvl === c.lvl) + 1; return { ...c, next: LEVELS[ni] || null }; }
+
+// ============================================================
+// CHESS BOARD RENDER (универсальный)
+// ============================================================
+function renderBoard(containerEl, chess, options = {}) {
+  const { onSquareClick, selectedSquare, hints = [], lastMove = null, orientation = 'w', interactive = true } = options;
+  
+  const inCheck = chess.in_check ? chess.in_check() : (chess.inCheck && chess.inCheck());
+  const checkSquare = inCheck ? findKingSquare(chess, chess.turn()) : null;
+  
+  const board = chess.board();
+  
+  let html = '<div class="chess-board">';
+  
+  const ranks = orientation === 'w' ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
+  const files = orientation === 'w' ? [0, 1, 2, 3, 4, 5, 6, 7] : [7, 6, 5, 4, 3, 2, 1, 0];
+  
+  for (const rankIdx of ranks) {
+    for (const fileIdx of files) {
+      const piece = board[7 - rankIdx][fileIdx];
+      const square = FILES[fileIdx] + (rankIdx + 1);
+      const isLight = (rankIdx + fileIdx) % 2 === 1;
+      
+      const classes = ['square', isLight ? 'light' : 'dark'];
+      if (selectedSquare === square) classes.push('selected');
+      if (lastMove && (lastMove.from === square || lastMove.to === square)) classes.push('last-move');
+      if (square === checkSquare) classes.push('in-check');
+      
+      let inner = '';
+      if (piece) {
+        const pieceCode = (piece.color === 'w' ? 'w' : 'b') + piece.type.toUpperCase();
+        inner += `<span class="piece piece-${piece.color}">${PIECE_SYMBOLS[pieceCode]}</span>`;
+      }
+      
+      const hint = hints.find(h => h.to === square);
+      if (hint) {
+        if (hint.captured || piece) {
+          inner += '<div class="capture-hint"></div>';
+        } else {
+          inner += '<div class="hint"></div>';
+        }
+      }
+      
+      // Координаты на крайних клетках
+      const showFile = (orientation === 'w' && rankIdx === 0) || (orientation === 'b' && rankIdx === 7);
+      const showRank = (orientation === 'w' && fileIdx === 0) || (orientation === 'b' && fileIdx === 7);
+      if (showFile) inner += `<span class="coord file">${FILES[fileIdx]}</span>`;
+      if (showRank) inner += `<span class="coord rank">${rankIdx + 1}</span>`;
+      
+      const onClick = interactive && onSquareClick ? `onclick="(${onSquareClick.toString()})('${square}')"` : '';
+      html += `<div class="${classes.join(' ')}" data-square="${square}" ${onClick}>${inner}</div>`;
+    }
+  }
+  
+  html += '</div>';
+  containerEl.innerHTML = html;
+}
+
+function findKingSquare(chess, color) {
+  const board = chess.board();
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const p = board[r][f];
+      if (p && p.type === 'k' && p.color === color) {
+        return FILES[f] + (8 - r);
+      }
+    }
+  }
+  return null;
+}
+
+// ============================================================
+// LESSON BOARD STATE
+// ============================================================
+let lessonChess = null;
+let lessonSelectedSquare = null;
+let lessonHints = [];
+let currentLesson = null;
+let lessonLastMove = null;
+let lessonCompleted = false;
+
+window.handleLessonSquareClick = function(square) {
+  if (!lessonChess || lessonCompleted) return;
+  
+  const piece = lessonChess.get(square);
+  
+  if (lessonSelectedSquare) {
+    // Попытка хода
+    if (lessonSelectedSquare === square) {
+      lessonSelectedSquare = null;
+      lessonHints = [];
+      updateLessonBoard();
+      return;
+    }
+    
+    try {
+      const move = lessonChess.move({ from: lessonSelectedSquare, to: square, promotion: 'q' });
+      if (move) {
+        lessonLastMove = { from: move.from, to: move.to };
+        lessonSelectedSquare = null;
+        lessonHints = [];
+        updateLessonBoard();
+        checkLessonSolution(move);
+        return;
+      }
+    } catch(e) {}
+    
+    if (piece && piece.color === lessonChess.turn()) {
+      lessonSelectedSquare = square;
+      lessonHints = lessonChess.moves({ square, verbose: true });
+      updateLessonBoard();
+    } else {
+      lessonSelectedSquare = null;
+      lessonHints = [];
+      updateLessonBoard();
+    }
+  } else {
+    if (piece && piece.color === lessonChess.turn()) {
+      lessonSelectedSquare = square;
+      lessonHints = lessonChess.moves({ square, verbose: true });
+      updateLessonBoard();
+    }
+  }
+};
+
+function updateLessonBoard() {
+  const wrap = document.getElementById('lessonBoardWrap');
+  if (!wrap || !lessonChess) return;
+  renderBoard(wrap, lessonChess, {
+    onSquareClick: window.handleLessonSquareClick,
+    selectedSquare: lessonSelectedSquare,
+    hints: lessonHints,
+    lastMove: lessonLastMove
+  });
+}
+
+function checkLessonSolution(move) {
+  if (!currentLesson || !currentLesson.exercise) return;
+  const exercise = currentLesson.exercise;
+  const sanMove = move.san;
+  const solutions = exercise.solutions || [exercise.solution];
+  
+  const isCorrect = solutions.some(sol => sanMove === sol || sanMove.replace('+','').replace('#','') === sol.replace('+','').replace('#',''));
+  
+  if (isCorrect) {
+    document.getElementById('lessonStatus').innerHTML = `<span style="color:var(--sage)">✅ ${exercise.successMsg || 'Верно!'}</span>`;
+    lessonCompleted = true;
+    if (!state.completedLessons.includes(currentLesson.id)) {
+      state.completedLessons.push(currentLesson.id);
+      state.totalXP += currentLesson.xp;
+      saveState();
+      toast(`+${currentLesson.xp} XP — урок пройден!`, 'success');
+      confetti();
+      checkAchievements();
+      updateHeader();
+    }
+  } else {
+    document.getElementById('lessonStatus').innerHTML = `<span style="color:var(--rose)">❌ Не тот ход. Попробуй ещё раз.</span>`;
+    setTimeout(() => {
+      lessonChess.undo();
+      lessonLastMove = null;
+      updateLessonBoard();
+      document.getElementById('lessonStatus').textContent = 'Сделай ход';
+    }, 1200);
+  }
+}
+
+function resetLessonBoard() {
+  if (!currentLesson || !currentLesson.exercise) return;
+  lessonChess = new Chess(currentLesson.exercise.fen);
+  lessonSelectedSquare = null;
+  lessonHints = [];
+  lessonLastMove = null;
+  lessonCompleted = state.completedLessons.includes(currentLesson.id);
+  updateLessonBoard();
+  document.getElementById('lessonStatus').textContent = 'Сделай ход';
+}
+
+function showLessonHint() {
+  if (!currentLesson || !currentLesson.exercise) return;
+  document.getElementById('lessonStatus').innerHTML = `<span style="color:var(--gold)">💡 ${currentLesson.exercise.hint}</span>`;
+}
+
+// ============================================================
+// LESSONS UI
+// ============================================================
+function renderLessonsList() {
+  document.getElementById('lessonsList').classList.remove('hidden');
+  document.getElementById('lessonView').classList.add('hidden');
+  
+  let html = '';
+  MODULES.forEach(mod => {
+    const ml = LESSONS.filter(l => l.module === mod.id);
+    if (ml.length === 0) return;
+    const completed = ml.filter(l => state.completedLessons.includes(l.id)).length;
+    
+    html += `<div class="mb-5">
+      <div class="flex items-center justify-between mb-3 px-1">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">${mod.icon}</span>
+          <div>
+            <h3 class="serif text-lg font-medium">${mod.name}</h3>
+            <p class="text-xs" style="color:var(--ink-muted)">${mod.desc}</p>
+          </div>
+        </div>
+        <span class="text-xs px-2.5 py-1 rounded-full" style="background:var(--soft);color:var(--ink-muted)">${completed}/${ml.length}</span>
+      </div>
+      <div class="space-y-2">`;
+    
+    ml.forEach((lesson, i) => {
+      const isC = state.completedLessons.includes(lesson.id);
+      html += `<div class="card level-card ${isC ? 'completed' : ''} p-4" onclick="openLesson('${lesson.id}')">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:${isC ? 'var(--sage)' : 'var(--soft)'};color:${isC ? '#1a1410' : 'var(--ink-soft)'}">${isC ? '✓' : i + 1}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              <h4 class="text-sm font-semibold">${lesson.title}</h4>
+              <span class="badge badge-${lesson.level}">${lesson.level === 'easy' ? 'легко' : lesson.level === 'medium' ? 'средне' : 'сложно'}</span>
+            </div>
+            <p class="text-xs" style="color:var(--ink-muted)">${lesson.desc}</p>
+          </div>
+          <p class="text-xs font-semibold" style="color:var(--gold)">+${lesson.xp}</p>
+        </div>
+      </div>`;
+    });
+    
+    html += '</div></div>';
+  });
+  
+  document.getElementById('lessonsList').innerHTML = html;
+}
+
+function openLesson(id) {
+  const lesson = LESSONS.find(l => l.id === id);
+  if (!lesson) return;
+  currentLesson = lesson;
+  
+  document.getElementById('lessonsList').classList.add('hidden');
+  document.getElementById('lessonView').classList.remove('hidden');
+  window.scrollTo(0, 0);
+  
+  const mod = MODULES.find(m => m.id === lesson.module);
+  document.getElementById('lessonModule').textContent = `${mod.icon} ${mod.name}`;
+  document.getElementById('lessonLevel').textContent = lesson.level === 'easy' ? 'легко' : lesson.level === 'medium' ? 'средне' : 'сложно';
+  document.getElementById('lessonLevel').className = `badge badge-${lesson.level}`;
+  document.getElementById('lessonTitle').textContent = lesson.title;
+  document.getElementById('lessonDesc').textContent = lesson.desc;
+  document.getElementById('lessonContent').innerHTML = lesson.content;
+  
+  if (lesson.exercise) {
+    document.getElementById('lessonExerciseBlock').classList.remove('hidden');
+    document.getElementById('exerciseTask').textContent = lesson.exercise.task;
+    lessonChess = new Chess(lesson.exercise.fen);
+    lessonCompleted = state.completedLessons.includes(lesson.id);
+    lessonSelectedSquare = null;
+    lessonHints = [];
+    lessonLastMove = null;
+    updateLessonBoard();
+    document.getElementById('lessonStatus').textContent = lessonCompleted ? '✓ Урок пройден' : 'Сделай ход';
+  } else {
+    document.getElementById('lessonExerciseBlock').classList.add('hidden');
+    // Если нет упражнения — засчитываем при открытии
+    if (!state.completedLessons.includes(lesson.id)) {
+      state.completedLessons.push(lesson.id);
+      state.totalXP += lesson.xp;
+      saveState();
+      checkAchievements();
+      updateHeader();
+      setTimeout(() => toast(`+${lesson.xp} XP — урок изучен!`, 'success'), 500);
+    }
+  }
+  
+  const idx = LESSONS.findIndex(l => l.id === id);
+  document.getElementById('prevBtn').disabled = idx === 0;
+  document.getElementById('prevBtn').style.opacity = idx === 0 ? '0.5' : '1';
+  document.getElementById('nextBtn').disabled = idx === LESSONS.length - 1;
+  document.getElementById('nextBtn').style.opacity = idx === LESSONS.length - 1 ? '0.5' : '1';
+}
+
+function backToLessons() { renderLessonsList(); }
+function prevLesson() { const idx = LESSONS.findIndex(l => l.id === currentLesson.id); if (idx > 0) openLesson(LESSONS[idx - 1].id); }
+function nextLesson() { const idx = LESSONS.findIndex(l => l.id === currentLesson.id); if (idx < LESSONS.length - 1) openLesson(LESSONS[idx + 1].id); }
+
+// ============================================================
+// PUZZLES UI
+// ============================================================
+let puzzleChess = null;
+let puzzleSelectedSquare = null;
+let puzzleHints = [];
+let currentPuzzle = null;
+let puzzleLastMove = null;
+let puzzleSolved = false;
+let currentPuzzleFilter = 'all';
+
+window.handlePuzzleSquareClick = function(square) {
+  if (!puzzleChess || puzzleSolved) return;
+  
+  const piece = puzzleChess.get(square);
+  
+  if (puzzleSelectedSquare) {
+    if (puzzleSelectedSquare === square) {
+      puzzleSelectedSquare = null;
+      puzzleHints = [];
+      updatePuzzleBoard();
+      return;
+    }
+    
+    try {
+      const move = puzzleChess.move({ from: puzzleSelectedSquare, to: square, promotion: 'q' });
+      if (move) {
+        puzzleLastMove = { from: move.from, to: move.to };
+        puzzleSelectedSquare = null;
+        puzzleHints = [];
+        updatePuzzleBoard();
+        checkPuzzleSolution(move);
+        return;
+      }
+    } catch(e) {}
+    
+    if (piece && piece.color === puzzleChess.turn()) {
+      puzzleSelectedSquare = square;
+      puzzleHints = puzzleChess.moves({ square, verbose: true });
+      updatePuzzleBoard();
+    } else {
+      puzzleSelectedSquare = null;
+      puzzleHints = [];
+      updatePuzzleBoard();
+    }
+  } else {
+    if (piece && piece.color === puzzleChess.turn()) {
+      puzzleSelectedSquare = square;
+      puzzleHints = puzzleChess.moves({ square, verbose: true });
+      updatePuzzleBoard();
+    }
+  }
+};
+
+function updatePuzzleBoard() {
+  const wrap = document.getElementById('puzzleBoardWrap');
+  if (!wrap || !puzzleChess) return;
+  renderBoard(wrap, puzzleChess, {
+    onSquareClick: window.handlePuzzleSquareClick,
+    selectedSquare: puzzleSelectedSquare,
+    hints: puzzleHints,
+    lastMove: puzzleLastMove
+  });
+}
+
+function checkPuzzleSolution(move) {
+  if (!currentPuzzle) return;
+  const sanMove = move.san;
+  const solutions = currentPuzzle.altSolutions || [currentPuzzle.solution];
+  const cleanMove = sanMove.replace('+','').replace('#','');
+  const isCorrect = solutions.some(sol => sanMove === sol || cleanMove === sol.replace('+','').replace('#',''));
+  
+  if (isCorrect) {
+    document.getElementById('puzzleStatus').innerHTML = `<span style="color:var(--sage)">✅ Верный ход! Задача решена.</span>`;
+    puzzleSolved = true;
+    if (!state.solvedPuzzles.includes(currentPuzzle.id)) {
+      state.solvedPuzzles.push(currentPuzzle.id);
+      state.totalXP += currentPuzzle.xp;
+      if (!state.hintsUsedThisPuzzle) state.puzzlesNoHint = (state.puzzlesNoHint || 0) + 1;
+      saveState();
+      toast(`+${currentPuzzle.xp} XP — задача решена!`, 'success');
+      confetti();
+      checkAchievements();
+      updateHeader();
+    }
+  } else {
+    document.getElementById('puzzleStatus').innerHTML = `<span style="color:var(--rose)">❌ Не лучший ход. Попробуй другой.</span>`;
+    setTimeout(() => {
+      puzzleChess.undo();
+      puzzleLastMove = null;
+      updatePuzzleBoard();
+      document.getElementById('puzzleStatus').textContent = 'Найди лучший ход';
+    }, 1200);
+  }
+}
+
+function renderPuzzlesList() {
+  document.getElementById('puzzlesList').classList.remove('hidden');
+  document.getElementById('puzzleView').classList.add('hidden');
+  
+  let filtered = PUZZLES;
+  if (['easy','medium','hard'].includes(currentPuzzleFilter)) filtered = PUZZLES.filter(p => p.level === currentPuzzleFilter);
+  else if (currentPuzzleFilter === 'solved') filtered = PUZZLES.filter(p => state.solvedPuzzles.includes(p.id));
+  
+  if (filtered.length === 0) {
+    document.getElementById('puzzlesList').innerHTML = '<p class="text-center py-8 text-sm" style="color:var(--ink-muted)">Нет задач</p>';
+    return;
+  }
+  
+  document.getElementById('puzzlesList').innerHTML = filtered.map(p => {
+    const solved = state.solvedPuzzles.includes(p.id);
+    return `<div class="card level-card ${solved ? 'completed' : ''} p-4 mb-2" onclick="openPuzzle('${p.id}')">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:${solved ? 'var(--sage)' : 'var(--soft)'};color:${solved ? '#1a1410' : 'var(--ink-soft)'}">${solved ? '✓' : '?'}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <h4 class="text-sm font-semibold">${p.title}</h4>
+            <span class="badge badge-${p.level}">${p.level === 'easy' ? 'легко' : p.level === 'medium' ? 'средне' : 'сложно'}</span>
+          </div>
+          <p class="text-xs" style="color:var(--ink-muted)">${p.desc.substring(0, 80)}</p>
+        </div>
+        <p class="text-xs font-semibold" style="color:var(--gold)">+${p.xp}</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openPuzzle(id) {
+  const p = PUZZLES.find(x => x.id === id);
+  if (!p) return;
+  currentPuzzle = p;
+  state.hintsUsedThisPuzzle = false;
+  
+  document.getElementById('puzzlesList').classList.add('hidden');
+  document.getElementById('puzzleView').classList.remove('hidden');
+  window.scrollTo(0, 0);
+  
+  document.getElementById('puzzleLevel').textContent = p.level === 'easy' ? 'легко' : p.level === 'medium' ? 'средне' : 'сложно';
+  document.getElementById('puzzleLevel').className = `badge badge-${p.level}`;
+  document.getElementById('puzzleXP').textContent = p.xp;
+  document.getElementById('puzzleTitle').textContent = p.title;
+  document.getElementById('puzzleDesc').textContent = p.desc;
+  
+  puzzleChess = new Chess(p.fen);
+  puzzleSolved = state.solvedPuzzles.includes(p.id);
+  puzzleSelectedSquare = null;
+  puzzleHints = [];
+  puzzleLastMove = null;
+  updatePuzzleBoard();
+  document.getElementById('puzzleStatus').textContent = puzzleSolved ? '✓ Задача уже решена' : 'Найди лучший ход';
+}
+
+function backToPuzzles() { renderPuzzlesList(); }
+function resetPuzzleBoard() {
+  if (!currentPuzzle) return;
+  puzzleChess = new Chess(currentPuzzle.fen);
+  puzzleSelectedSquare = null;
+  puzzleHints = [];
+  puzzleLastMove = null;
+  puzzleSolved = state.solvedPuzzles.includes(currentPuzzle.id);
+  updatePuzzleBoard();
+  document.getElementById('puzzleStatus').textContent = puzzleSolved ? '✓ Уже решена' : 'Найди лучший ход';
+}
+function showPuzzleHint() {
+  if (!currentPuzzle) return;
+  state.hintsUsedThisPuzzle = true;
+  document.getElementById('puzzleStatus').innerHTML = `<span style="color:var(--gold)">💡 ${currentPuzzle.hint}</span>`;
+}
+function showPuzzleSolution() {
+  if (!currentPuzzle) return;
+  state.hintsUsedThisPuzzle = true;
+  document.getElementById('puzzleStatus').innerHTML = `<span style="color:var(--accent)">👁 Решение: <strong>${currentPuzzle.solution}</strong></span>`;
+}
+
+// ============================================================
+// PLAY GAME
+// ============================================================
+let gameChess = null;
+let gameSelectedSquare = null;
+let gameHints = [];
+let gameLastMove = null;
+let gameDifficulty = 1;
+let playerColor = 'w';
+let gameOver = false;
+let aiThinking = false;
+
+function startGame() {
+  gameChess = new Chess();
+  gameSelectedSquare = null;
+  gameHints = [];
+  gameLastMove = null;
+  gameOver = false;
+  
+  document.getElementById('gameSetup').classList.add('hidden');
+  document.getElementById('gameView').classList.remove('hidden');
+  
+  const opNames = { 1: 'Новичок', 2: 'Любитель', 3: 'Мастер' };
+  document.getElementById('opponentName').textContent = opNames[gameDifficulty];
+  document.getElementById('opponentIcon').textContent = gameDifficulty === 1 ? '🌱' : gameDifficulty === 2 ? '⚔️' : '👑';
+  
+  updateGameBoard();
+  
+  if (playerColor === 'b') {
+    setTimeout(() => makeAIMove(), 600);
+  }
+}
+
+window.handleGameSquareClick = function(square) {
+  if (!gameChess || gameOver || aiThinking) return;
+  if (gameChess.turn() !== playerColor) return;
+  
+  const piece = gameChess.get(square);
+  
+  if (gameSelectedSquare) {
+    if (gameSelectedSquare === square) {
+      gameSelectedSquare = null;
+      gameHints = [];
+      updateGameBoard();
+      return;
+    }
+    
+    try {
+      const move = gameChess.move({ from: gameSelectedSquare, to: square, promotion: 'q' });
+      if (move) {
+        gameLastMove = { from: move.from, to: move.to };
+        gameSelectedSquare = null;
+        gameHints = [];
+        updateGameBoard();
+        updateGameStatus();
+        if (!checkGameEnd()) {
+          aiThinking = true;
+          setTimeout(() => makeAIMove(), 400 + Math.random() * 600);
+        }
+        return;
+      }
+    } catch(e) {}
+    
+    if (piece && piece.color === gameChess.turn()) {
+      gameSelectedSquare = square;
+      gameHints = gameChess.moves({ square, verbose: true });
+      updateGameBoard();
+    } else {
+      gameSelectedSquare = null;
+      gameHints = [];
+      updateGameBoard();
+    }
+  } else {
+    if (piece && piece.color === gameChess.turn()) {
+      gameSelectedSquare = square;
+      gameHints = gameChess.moves({ square, verbose: true });
+      updateGameBoard();
+    }
+  }
+};
+
+function updateGameBoard() {
+  const wrap = document.getElementById('gameBoardWrap');
+  if (!wrap || !gameChess) return;
+  renderBoard(wrap, gameChess, {
+    onSquareClick: window.handleGameSquareClick,
+    selectedSquare: gameSelectedSquare,
+    hints: gameHints,
+    lastMove: gameLastMove,
+    orientation: playerColor
+  });
+  updateCaptured();
+  updateMoveHistory();
+}
+
+// ============================================================
+// AI ENGINE (simple minimax with alpha-beta)
+// ============================================================
+function evaluateBoard(chess) {
+  if (chess.in_checkmate()) return chess.turn() === 'w' ? -100000 : 100000;
+  if (chess.in_draw() || chess.in_stalemate() || chess.in_threefold_repetition()) return 0;
+  
+  const board = chess.board();
+  let score = 0;
+  
+  // Position values for pieces in center
+  const centerBonus = [
+    [0,0,0,0,0,0,0,0],
+    [0,1,1,2,2,1,1,0],
+    [0,1,2,3,3,2,1,0],
+    [0,2,3,4,4,3,2,0],
+    [0,2,3,4,4,3,2,0],
+    [0,1,2,3,3,2,1,0],
+    [0,1,1,2,2,1,1,0],
+    [0,0,0,0,0,0,0,0]
+  ];
+  
+  for (let r = 0; r < 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const p = board[r][f];
+      if (p) {
+        let value = PIECE_VALUES[p.type] * 100;
+        // Bonus for centralization (lighter for higher levels)
+        if (gameDifficulty >= 2) value += centerBonus[r][f];
+        if (p.color === 'w') score += value;
+        else score -= value;
+      }
+    }
+  }
+  
+  return score;
+}
+
+function minimax(chess, depth, alpha, beta, maximizing) {
+  if (depth === 0 || chess.game_over()) return evaluateBoard(chess);
+  
+  const moves = chess.moves();
+  
+  if (maximizing) {
+    let maxEval = -Infinity;
+    for (const move of moves) {
+      chess.move(move);
+      const evalScore = minimax(chess, depth - 1, alpha, beta, false);
+      chess.undo();
+      maxEval = Math.max(maxEval, evalScore);
+      alpha = Math.max(alpha, evalScore);
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    for (const move of moves) {
+      chess.move(move);
+      const evalScore = minimax(chess, depth - 1, alpha, beta, true);
+      chess.undo();
+      minEval = Math.min(minEval, evalScore);
+      beta = Math.min(beta, evalScore);
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+
+function findBestMove(chess, depth) {
+  const moves = chess.moves();
+  if (moves.length === 0) return null;
+  
+  let bestMove = moves[0];
+  let bestEval = chess.turn() === 'w' ? -Infinity : Infinity;
+  
+  // Shuffle for variety on equal moves
+  const shuffled = [...moves].sort(() => Math.random() - 0.5);
+  
+  for (const move of shuffled) {
+    chess.move(move);
+    const evalScore = minimax(chess, depth - 1, -Infinity, Infinity, chess.turn() === 'w');
+    chess.undo();
+    
+    if (chess.turn() === 'w') {
+      if (evalScore > bestEval) {
+        bestEval = evalScore;
+        bestMove = move;
+      }
+    } else {
+      if (evalScore < bestEval) {
+        bestEval = evalScore;
+        bestMove = move;
+      }
+    }
+  }
+  
+  return bestMove;
+}
+
+function makeAIMove() {
+  if (!gameChess || gameOver) { aiThinking = false; return; }
+  
+  let move;
+  const moves = gameChess.moves();
+  if (moves.length === 0) { aiThinking = false; return; }
+  
+  if (gameDifficulty === 1) {
+    // Новичок: 70% случайно, 30% берёт фигуры
+    const captures = gameChess.moves({ verbose: true }).filter(m => m.captured);
+    if (captures.length > 0 && Math.random() < 0.4) {
+      move = captures[Math.floor(Math.random() * captures.length)].san;
+    } else {
+      move = moves[Math.floor(Math.random() * moves.length)];
+    }
+  } else if (gameDifficulty === 2) {
+    // Любитель: minimax depth 2
+    move = findBestMove(gameChess, 2);
+  } else {
+    // Мастер: minimax depth 3
+    move = findBestMove(gameChess, 3);
+  }
+  
+  if (move) {
+    const moveObj = gameChess.move(move);
+    gameLastMove = { from: moveObj.from, to: moveObj.to };
+    updateGameBoard();
+    updateGameStatus();
+    checkGameEnd();
+  }
+  aiThinking = false;
+}
+
+function updateGameStatus() {
+  const status = document.getElementById('gameStatus');
+  if (gameChess.in_checkmate()) {
+    const winner = gameChess.turn() === 'w' ? 'Чёрные' : 'Белые';
+    status.innerHTML = `<span style="color:var(--gold)">🏆 Мат! ${winner} победили</span>`;
+  } else if (gameChess.in_draw() || gameChess.in_stalemate() || gameChess.in_threefold_repetition()) {
+    status.innerHTML = `<span style="color:var(--ink-soft)">🤝 Ничья</span>`;
+  } else if (gameChess.in_check()) {
+    status.innerHTML = `<span style="color:var(--rose)">⚠️ Шах! Ход ${gameChess.turn() === playerColor ? 'твой' : 'компьютера'}</span>`;
+  } else {
+    status.textContent = gameChess.turn() === playerColor ? `Твой ход (${playerColor === 'w' ? 'белые' : 'чёрные'})` : 'Думает компьютер...';
+  }
+}
+
+function checkGameEnd() {
+  if (gameChess.in_checkmate()) {
+    gameOver = true;
+    const playerWon = gameChess.turn() !== playerColor;
+    if (playerWon) {
+      state.wins = (state.wins || 0) + 1;
+      if (!state.beatLevels.includes(gameDifficulty)) state.beatLevels.push(gameDifficulty);
+      const winXP = gameDifficulty === 1 ? 30 : gameDifficulty === 2 ? 60 : 100;
+      state.totalXP += winXP;
+      saveState();
+      setTimeout(() => { toast(`🏆 Победа! +${winXP} XP`, 'success'); confetti(); checkAchievements(); updateHeader(); }, 500);
+    } else {
+      state.losses = (state.losses || 0) + 1;
+      saveState();
+      setTimeout(() => toast('Поражение. Не сдавайся!', 'error'), 500);
+    }
+    return true;
+  }
+  if (gameChess.in_draw() || gameChess.in_stalemate() || gameChess.in_threefold_repetition()) {
+    gameOver = true;
+    state.draws = (state.draws || 0) + 1;
+    state.totalXP += 10;
+    saveState();
+    setTimeout(() => toast('Ничья. +10 XP', 'success'), 500);
+    return true;
+  }
+  return false;
+}
+
+function updateCaptured() {
+  if (!gameChess) return;
+  const history = gameChess.history({ verbose: true });
+  const wCaptured = []; // Pieces white captured (i.e. black pieces)
+  const bCaptured = [];
+  history.forEach(m => {
+    if (m.captured) {
+      const symbol = PIECE_SYMBOLS[(m.color === 'w' ? 'b' : 'w') + m.captured.toUpperCase()];
+      if (m.color === 'w') wCaptured.push(symbol);
+      else bCaptured.push(symbol);
+    }
+  });
+  const myCaptured = playerColor === 'w' ? wCaptured : bCaptured;
+  const oppCaptured = playerColor === 'w' ? bCaptured : wCaptured;
+  document.getElementById('myCaptured').innerHTML = myCaptured.length === 0 ? '—' : myCaptured.map(s => `<span class="piece-captured">${s}</span>`).join('');
+  document.getElementById('oppCaptured').innerHTML = oppCaptured.length === 0 ? '—' : oppCaptured.map(s => `<span class="piece-captured">${s}</span>`).join('');
+}
+
+function updateMoveHistory() {
+  if (!gameChess) return;
+  const history = gameChess.history();
+  const el = document.getElementById('moveHistory');
+  if (history.length === 0) {
+    el.innerHTML = '<p class="text-xs" style="color:var(--ink-muted)">Партия только началась</p>';
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < history.length; i += 2) {
+    const moveNum = Math.floor(i / 2) + 1;
+    const w = history[i] || '';
+    const b = history[i + 1] || '';
+    html += `<div class="move-row"><span class="move-num">${moveNum}.</span><span class="move-cell">${w}</span><span class="move-cell">${b}</span></div>`;
+  }
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+function undoMove() {
+  if (!gameChess || gameOver) return;
+  // Undo opponent move + own move
+  if (gameChess.history().length > 0) gameChess.undo();
+  if (gameChess.history().length > 0 && gameChess.turn() !== playerColor) gameChess.undo();
+  gameLastMove = null;
+  gameSelectedSquare = null;
+  gameHints = [];
+  updateGameBoard();
+  updateGameStatus();
+}
+
+function resignGame() {
+  if (!gameChess || gameOver) return;
+  if (!confirm('Сдаться?')) return;
+  gameOver = true;
+  state.losses = (state.losses || 0) + 1;
+  saveState();
+  document.getElementById('gameStatus').innerHTML = `<span style="color:var(--rose)">🏳 Ты сдался(-ась)</span>`;
+  toast('Партия сдана');
+}
+
+function newGame() {
+  document.getElementById('gameSetup').classList.remove('hidden');
+  document.getElementById('gameView').classList.add('hidden');
+}
+
+document.querySelectorAll('.difficulty-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    gameDifficulty = parseInt(btn.dataset.level);
+  });
+});
+
+document.querySelectorAll('.color-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    playerColor = btn.dataset.color === 'white' ? 'w' : 'b';
+  });
+});
+
+// ============================================================
+// PROGRESS
+// ============================================================
+function renderProgress() {
+  const lvl = calcLevel(state.totalXP);
+  document.getElementById('userLevel').textContent = lvl.lvl;
+  document.getElementById('userLevelName').textContent = lvl.name + ' ' + lvl.icon;
+  document.getElementById('currentXP2').textContent = state.totalXP;
+  document.getElementById('lessonsDone').textContent = state.completedLessons.length;
+  document.getElementById('puzzlesDone').textContent = state.solvedPuzzles.length;
+  document.getElementById('winsCount').textContent = state.wins || 0;
+  
+  if (lvl.next) {
+    document.getElementById('nextLevelText').textContent = `${lvl.next.xp - state.totalXP} XP до уровня ${lvl.next.lvl}`;
+    const progress = ((state.totalXP - lvl.xp) / (lvl.next.xp - lvl.xp)) * 100;
+    document.getElementById('xpBar').style.width = progress + '%';
+    const c = 2 * Math.PI * 34;
+    document.getElementById('progressRing').style.strokeDashoffset = c - (progress/100)*c;
+    document.getElementById('progressPercent').textContent = Math.round(progress) + '%';
+  } else {
+    document.getElementById('nextLevelText').textContent = 'Максимум';
+    document.getElementById('xpBar').style.width = '100%';
+    document.getElementById('progressPercent').textContent = '100%';
+  }
+  
+  document.getElementById('achievementsGrid').innerHTML = ACHIEVEMENTS.map(a => {
+    const u = state.unlockedAchievements.includes(a.id);
+    return `<div class="card p-3 text-center ${u ? '' : 'opacity-40'}">
+      <div class="text-3xl mb-1 ${u ? 'pop' : 'grayscale'}">${a.icon}</div>
+      <p class="text-[11px] font-medium leading-tight">${a.name}</p>
+      <p class="text-[9px] mt-1" style="color:var(--ink-muted)">${a.desc}</p>
+    </div>`;
+  }).join('');
+}
+
+function checkAchievements() {
+  ACHIEVEMENTS.forEach(a => {
+    if (state.unlockedAchievements.includes(a.id)) return;
+    if (a.check(state)) {
+      state.unlockedAchievements.push(a.id);
+      saveState();
+      setTimeout(() => { toast(`🏆 ${a.name} ${a.icon}`, 'success'); confetti(); }, 600);
+    }
+  });
+}
+
+function updateHeader() {
+  document.getElementById('xpCount').textContent = state.totalXP;
+}
+
+function resetProgress() {
+  if (!confirm('Сбросить весь прогресс?')) return;
+  if (!confirm('Точно?')) return;
+  state = defaultState();
+  saveState();
+  renderAll();
+  toast('Сброшено');
+}
+
+// ============================================================
+// UI
+// ============================================================
+function toast(msg, type = '') {
+  const ex = document.querySelector('.toast'); if (ex) ex.remove();
+  const t = document.createElement('div'); t.className = 'toast ' + type; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.style.opacity = '0', 2200);
+  setTimeout(() => t.remove(), 2600);
+}
+
+function confetti() {
+  const cs = ['#d4a574','#e8c068','#8caf76','#c97064'];
+  for (let i = 0; i < 40; i++) {
+    const p = document.createElement('div'); p.className = 'confetti-piece';
+    p.style.left = Math.random()*100 + '%';
+    p.style.background = cs[Math.floor(Math.random()*cs.length)];
+    p.style.animationDelay = Math.random()*.5 + 's';
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 3000);
+  }
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => { b.style.background = ''; b.style.color = 'var(--ink-soft)'; });
+    btn.style.background = 'var(--accent)'; btn.style.color = '#1a1410';
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'progress') renderProgress();
+    if (btn.dataset.tab === 'puzzles') renderPuzzlesList();
+    if (btn.dataset.tab === 'learn') renderLessonsList();
+  });
+});
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentPuzzleFilter = btn.dataset.filter;
+    renderPuzzlesList();
+  });
+});
+
+function renderAll() { updateHeader(); renderLessonsList(); }
+renderAll();
+</script>
+</body>
+</html>
